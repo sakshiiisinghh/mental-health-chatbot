@@ -1,14 +1,19 @@
 import streamlit as st
-import os
 import google.generativeai as genai
 from textblob import TextBlob
 import pandas as pd
 
-# configure with your Gemini API key
-genai.configure(api_key=os.getenv("GEMINI_API_KEY", "AIzaSyA2ffuzRRgF97spYqzalJ-p47BnbDFHdG4"))
+# -----------------------------
+# Configure Gemini API via Streamlit secrets
+# -----------------------------
+api_key = st.secrets["GEMINI_API_KEY"]
+genai.configure(api_key=api_key)
+
+# -----------------------------
+# Functions
+# -----------------------------
 def generate_response(prompt):
     try:
-        # choose a model — e.g. gemini-1.5-flash or gemini-2.5-flash / pro etc.
         model = genai.GenerativeModel("gemini-2.5-flash")
         result = model.generate_content(prompt)
         return result.text.strip()
@@ -45,50 +50,98 @@ def display_disclaimer():
         unsafe_allow_html=True
     )
     st.sidebar.markdown(
-        "<span style='color: #FF5733;'>This application stores your session data, including your messages and "
-        "sentiment analysis results, in temporary storage during your session. "
-        "This data is not stored permanently and is used solely to improve your interaction with the chatbot. "
-        "Please avoid sharing personal or sensitive information during your conversation.</span>",
+        "<span style='color: #FF5733;'>This application stores your session data temporarily during your session. "
+        "Data is not saved permanently and is used solely for the chatbot experience. "
+        "Avoid sharing personal or sensitive info.</span>",
         unsafe_allow_html=True
     )
 
-st.title("Mental Health Support Chatbot")
+def display_message(sender, message):
+    if sender == "You":
+        st.markdown(
+            f"""
+            <div style="background-color:#DCF8C6; padding:10px; border-radius:10px; margin:5px 0px; text-align:right;">
+                <b>{sender}:</b> {message}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
+    else:
+        st.markdown(
+            f"""
+            <div style="background-color:#F1F0F0; padding:10px; border-radius:10px; margin:5px 0px; text-align:left;">
+                <b>{sender}:</b> {message}
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
 
+# -----------------------------
+# Initialize session state
+# -----------------------------
 if 'messages' not in st.session_state:
     st.session_state['messages'] = []
 if 'mood_tracker' not in st.session_state:
     st.session_state['mood_tracker'] = []
 
-with st.form(key='chat_form'):
-    user_message = st.text_input("You:")
+# -----------------------------
+# UI: Title
+# -----------------------------
+st.title("Mental Health Support Chatbot")
+
+# -----------------------------
+# Chat input
+# -----------------------------
+with st.form(key='chat_form', clear_on_submit=True):
+    user_message = st.text_input("Type your message here...")
     submit_button = st.form_submit_button(label='Send')
 
 if submit_button and user_message:
+    # Save user message
     st.session_state['messages'].append(("You", user_message))
 
+    # Sentiment analysis
     sentiment, polarity = analyze_sentiment(user_message)
     coping_strategy = provide_coping_strategy(sentiment)
 
+    # Generate bot response
     response = generate_response(user_message)
-
     st.session_state['messages'].append(("Bot", response))
+
+    # Track mood
     st.session_state['mood_tracker'].append((user_message, sentiment, polarity))
 
+# -----------------------------
+# Display chat messages with styled bubbles
+# -----------------------------
 for sender, message in st.session_state['messages']:
-    if sender == "You":
-        st.text(f"You: {message}")
-    else:
-        st.text(f"Bot: {message}")
+    display_message(sender, message)
 
+# -----------------------------
+# Mood chart
+# -----------------------------
 if st.session_state['mood_tracker']:
     mood_data = pd.DataFrame(st.session_state['mood_tracker'], columns=["Message", "Sentiment", "Polarity"])
     st.line_chart(mood_data['Polarity'])
 
-if user_message:
-    st.write(f"Suggested Coping Strategy: {coping_strategy}")
+# -----------------------------
+# Show coping strategy
+# -----------------------------
+if submit_button and user_message:
+    st.markdown(
+        f"""
+        <div style="background-color:#FFF3CD; padding:10px; border-radius:10px; margin:10px 0px;">
+            <b>Suggested Coping Strategy:</b> {coping_strategy}
+        </div>
+        """,
+        unsafe_allow_html=True
+    )
 
+# -----------------------------
+# Sidebar: Resources
+# -----------------------------
 st.sidebar.title("Resources")
-st.sidebar.write("If you need immediate help, please contact one of the following resources:")
+st.sidebar.write("If you need immediate help, contact:")
 st.sidebar.write("1. National Suicide Prevention Lifeline: 1-800-273-8255")
 st.sidebar.write("2. Crisis Text Line: Text 'HELLO' to 741741")
 st.sidebar.write("[More Resources](https://www.mentalhealth.gov/get-help/immediate-help)")
@@ -98,4 +151,7 @@ if st.sidebar.button("Show Session Summary"):
     for i, (message, sentiment, polarity) in enumerate(st.session_state['mood_tracker']):
         st.sidebar.write(f"{i + 1}. {message} - Sentiment: {sentiment} (Polarity: {polarity})")
 
+# -----------------------------
+# Disclaimer
+# -----------------------------
 display_disclaimer()
