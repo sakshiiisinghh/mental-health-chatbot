@@ -1,1 +1,1 @@
-# mental-health-chatgpt
+# mental-health-chatbot
